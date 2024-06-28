@@ -26,4 +26,5 @@ public interface ICacheKey {
      * @return The String representation of the Redis keys.
      */
     List<String> getRedisKeyStr();
+
 }

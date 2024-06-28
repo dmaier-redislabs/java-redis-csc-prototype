@@ -74,8 +74,12 @@ public class SimpleCache implements ICache {
         //Update the index
         for (String k : result.getCacheKey().getRedisKeyStr()) {
             List<ICacheKey> cacheKeyList = this.byRedisKeyIdx.get(k);
+
+            //Create the list if it doesn't exist
             if (cacheKeyList == null)
-                this.byRedisKeyIdx.put(k, new ArrayList<>());
+                cacheKeyList = new ArrayList<>();
+                this.byRedisKeyIdx.put(k, cacheKeyList);
+
             cacheKeyList.add(cacheKey);
         }
 

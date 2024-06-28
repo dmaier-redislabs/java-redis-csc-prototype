@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A cache key that assumes that the keys are strings
@@ -45,5 +46,19 @@ public class StrCacheKey implements ICacheKey {
     @Override
     public List<String> getRedisKeyStr() {
        return this.redisKeys;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof StrCacheKey) {
+            StrCacheKey other = (StrCacheKey) obj;
+            return this.cmd.equals(other.cmd) && this.redisKeys.equals(other.redisKeys);
+        }
+        return false;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(cmd, redisKeys);
     }
 }

@@ -23,6 +23,7 @@ public class CachedJedisConnection implements ICachedConnection<UnifiedJedis> {
     private UnifiedJedis inner;
     private ICache cache;
 
+
     /**
      * Cto
      *
@@ -66,11 +67,12 @@ public class CachedJedisConnection implements ICachedConnection<UnifiedJedis> {
         ICacheKey cacheKey = new StrCacheKey("GET", Arrays.asList(key));
         ByteBuffer value = this.cache.get(cacheKey);
 
-        if (value != null)
+        if (value != null) {
             return new String(value.array(), StandardCharsets.UTF_8);
-        else
-            return inner.get(key);
+        } else {
+            String valueStr = inner.get(key);
+            this.cache.set(cacheKey, ByteBuffer.wrap(valueStr.getBytes(StandardCharsets.UTF_8)));
+            return valueStr;
+        }
     }
-
-
 }
