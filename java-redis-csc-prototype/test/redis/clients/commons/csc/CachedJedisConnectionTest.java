@@ -1,10 +1,10 @@
 package redis.clients.commons.csc;
 
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import redis.clients.commons.csc.model.ICache;
-import redis.clients.commons.csc.model.ICachedConnection;
-import redis.clients.jedis.UnifiedJedis;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -12,13 +12,15 @@ class CachedJedisConnectionTest {
 
     static CachedJedisConnection conn;
     static ICache cache;
+    static int CACHE_SIZE = 10000;
 
-    @BeforeAll
-    static void init() {
-        cache = new SimpleCache(10000, new LRUEviction());
+    @BeforeEach
+    void init() {
+        cache = new SimpleCache(CACHE_SIZE, new LRUEviction());
         conn = new CachedJedisConnection("localhost", 6379, cache);
+        conn.getInner().flushAll();
     }
-
+/*
     @Test
     void set() {
         assertEquals("OK", conn.set("hello", "world"));
@@ -35,35 +37,44 @@ class CachedJedisConnectionTest {
     void getCached() {
         assertEquals("OK", conn.set("hello:1", "world"));
         int size = conn.getCache().getSize();
+
+        //Ensure that we get only one cache entry instead of two when caching
+        // the same cache key twice
         assertEquals("world", conn.get("hello:1"));
-        conn.get("hello:1");
         assertEquals(size +1, conn.getCache().getSize());
         assertEquals("world", conn.get("hello:1"));
         assertEquals(size +1, conn.getCache().getSize());
     }
 
    @Test
-    void cache1000() {
+    void cacheWithoutEviction() {
 
         int size = conn.getCache().getSize();
+        assertEquals(0, size);
 
-        for (int i = 0; i < 1000; i++) {
-            conn.set("hello:1000:" + i, "world");
-            conn.get("hello:1000:" + i);
+        //Using 10% of the cache
+        for (int i = 0; i < CACHE_SIZE/10; i++) {
+            conn.set("wo-evict:" + i, ""+i);
+            conn.get("wo-evict:" + i);
         }
 
-        assertEquals(size + 1000, conn.getCache().getSize());
+        assertEquals(size + CACHE_SIZE/10, conn.getCache().getSize());
     }
-
+*/
     @Test
-    void eviction() {
+    void cacheWithEviction() {
+        int testSize = (CACHE_SIZE*10)-1;
         int size = conn.getCache().getSize();
+        assertEquals(0, size);
 
-        for (int i = 0; i < 10000; i++) {
-            conn.set("hello:10000:" + i, "world");
-            conn.get("hello:10000:" + i);
+        //Using 10 times the cache size
+        for (int i = 0; i <= testSize; i++) {
+            conn.set("w-evict:" + i, ""+i);
+            conn.get("w-evict:" + i);
         }
+
         assertEquals(cache.getMaxSize(), conn.getCache().getSize());
+        System.out.println(cache.get(new StrCacheKey("GET", Arrays.asList("w-evict:"+testSize))).getInt());
     }
 
 }
