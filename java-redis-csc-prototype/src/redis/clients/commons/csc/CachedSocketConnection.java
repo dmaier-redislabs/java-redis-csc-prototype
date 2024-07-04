@@ -82,6 +82,10 @@ public class CachedSocketConnection {
         int numBytes = 0;
         StopWatch sw = new StopWatch();
 
+        // The method input.available() returns the number of bytes that can be read without
+        // blocking, whereby input.read() blocks until the socket has data. We could also use
+        // input.read() instead of checking for if a command timeout occurred. Then the socket
+        // timeout would be used.
         sw.start();
         while (numBytes == 0 && elapsed < CMD_TIMEOUT) {
             numBytes = this.input.available();
