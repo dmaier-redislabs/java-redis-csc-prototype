@@ -17,13 +17,14 @@ class CachedSocketConnectionTest {
         String result = con.execRawCmdStr(new String[]{"GET", "hello"});
         System.out.println(result);
 
+        //TODO: Runs forever, unless you execute `DEL hello` via the CLI
         while (!con.hasData()) {
             System.out.println("Waiting for data...");
             Thread.sleep(100);
         }
 
         System.out.println("Found some data!");
-        result = con.blockAndReadData();
+        result = con.readDataBlocking();
         System.out.println(result);
 
 

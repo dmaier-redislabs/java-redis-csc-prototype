@@ -53,7 +53,7 @@ public class CachedSocketConnection {
         this.writer.print(sb.toString());
         this.writer.flush();
 
-        return blockAndReadData();
+        return readDataBlocking();
     }
 
     /**
@@ -77,7 +77,7 @@ public class CachedSocketConnection {
      * @throws TimeoutException
      * @throws IOException
      */
-    public String blockAndReadData() throws TimeoutException, IOException {
+    public String readDataBlocking() throws TimeoutException, IOException {
         long elapsed = 0;
         int numBytes = 0;
         StopWatch sw = new StopWatch();
