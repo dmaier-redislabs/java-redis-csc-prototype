@@ -4,12 +4,16 @@ import redis.clients.commons.csc.util.StopWatch;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeoutException;
 
 public class CachedSocketConnection {
 
     public static long CMD_TIMEOUT = 2000;
+    public static int BUFFER_SIZE = 1024;
+
     private Socket socket;
     private OutputStream output;
     private InputStream input;
@@ -42,6 +46,10 @@ public class CachedSocketConnection {
      * @throws TimeoutException
      */
     public String execRawCmdStr(String[] commandArr) throws IOException, TimeoutException {
+        return new String(execRawCmdBin(commandArr).array(), StandardCharsets.UTF_8);
+    }
+
+    public ByteBuffer execRawCmdBin(String[] commandArr) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("*").append(commandArr.length).append("\r\n");
 
@@ -53,7 +61,7 @@ public class CachedSocketConnection {
         this.writer.print(sb.toString());
         this.writer.flush();
 
-        return readDataBlocking();
+        return readDataBlockingBytes();
     }
 
     /**
@@ -100,5 +108,35 @@ public class CachedSocketConnection {
             int consumed = this.reader.read(buffer);
             return new String(buffer.array(), 0, consumed);
         }
+    }
+
+    /**
+     * Reads data from the socket's input stream
+     *
+     * @return The data as ByteBuffer
+     * @throws IOException
+
+     */
+    public ByteBuffer readDataBlockingBytes() throws IOException {
+
+        this.socket.setSoTimeout((int) CMD_TIMEOUT);
+
+        BufferedInputStream bis = new BufferedInputStream(input);
+        ByteArrayOutputStream baas = new ByteArrayOutputStream();
+
+        //Block until data arrives. If no data arrives, a SocketTimeOutException is raised.
+        byte[] tmpBuffer = new byte[BUFFER_SIZE];
+        int bytesRead = this.input.read(tmpBuffer);
+        baas.write(tmpBuffer, 0, bytesRead);
+
+        //Avoid unnecessary read blocking if there isn't any additional data.
+        //If there is more data, then write it into the byte array output stream.
+        while (input.available() > 0) {
+            tmpBuffer = new byte[BUFFER_SIZE];
+            bytesRead = this.input.read(tmpBuffer);
+            baas.write(tmpBuffer, 0, bytesRead);
+        }
+
+        return ByteBuffer.wrap(baas.toByteArray());
     }
 }
