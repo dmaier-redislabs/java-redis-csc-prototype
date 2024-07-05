@@ -1,38 +1,41 @@
 package redis.clients.commons.csc;
 
-import redis.clients.commons.csc.util.StopWatch;
+import redis.clients.commons.csc.model.ICache;
+import redis.clients.commons.csc.model.ICachedConnection;
 
 import java.io.*;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
+import java.text.ParseException;
+import java.util.Arrays;
 import java.util.concurrent.TimeoutException;
 
-public class CachedSocketConnection {
+public class CachedSocketConnection implements ICachedConnection<Socket> {
 
-    public static long CMD_TIMEOUT = 2000;
     public static int BUFFER_SIZE = 1024;
 
-    private Socket socket;
-    private OutputStream output;
-    private InputStream input;
-    private PrintWriter writer;
-    private BufferedReader reader;
-
+    private final Socket socket;
+    private final InputStream input;
+    private final PrintWriter writer;
+    private final ICache cache;
+    private final long cmdTimeout;
     /**
      * The connection constructor
      *
      * @param host
      * @param port
+     * @param cache
      * @throws IOException
      */
-    public CachedSocketConnection(String host, int port) throws IOException {
+    public CachedSocketConnection(String host, int port, long cmdTimeout, ICache cache) throws IOException {
         this.socket = new Socket(host, port);
-        this.output = socket.getOutputStream();
+        OutputStream output = socket.getOutputStream();
         this.input = socket.getInputStream();
         this.writer = new PrintWriter(output, true);
-        this.reader = new BufferedReader(new InputStreamReader(input));
+        this.cmdTimeout = cmdTimeout;
+        this.cache = cache;
+
     }
 
     /**
@@ -46,22 +49,60 @@ public class CachedSocketConnection {
      * @throws TimeoutException
      */
     public String execRawCmdStr(String[] commandArr) throws IOException, TimeoutException {
-        return new String(execRawCmdBin(commandArr).array(), StandardCharsets.UTF_8);
+        return new String(execRawCmdBin(commandArr).array(), Charset.defaultCharset());
     }
 
+    /**
+     * Execute a command by assuming that the passed data is a String and that the returned data is
+     * a byte array wrapped by a byte buffer.
+     *
+     * @param commandArr
+     * @return
+     * @throws IOException
+     */
     public ByteBuffer execRawCmdBin(String[] commandArr) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        sb.append("*").append(commandArr.length).append("\r\n");
 
-        for (String c : commandArr) {
-            sb.append("$").append(c.length()).append("\r\n");
-            sb.append(c).append("\r\n");
+        StrCacheKey cacheKey = new StrCacheKey(commandArr[0],
+                Arrays.asList(Arrays.copyOfRange(commandArr, 1, commandArr.length)));
+
+        if (this.cache.hasCacheKey(cacheKey)) {
+
+            ByteBuffer cachedValue = this.cache.get(cacheKey);
+
+            //TODO: Just for experimenting
+            //Check if there is an invalidation notification
+            if (this.hasData()) {
+                try {
+                    InvalidationNotification msg = new InvalidationNotification(readDataBlockingBytes());
+                    for (ByteBuffer k : msg.getKeys()) {
+                        this.cache.deleteByRedisKey(k);
+                    }
+                } catch (ParseException e) {
+                    //Skipping because the received data is not an invalidation message
+                }
+            }
+
+            return cachedValue;
+        } else {
+            StringBuilder sb = new StringBuilder();
+            sb.append("*").append(commandArr.length).append("\r\n");
+
+            for (String c : commandArr) {
+                sb.append("$").append(c.length()).append("\r\n");
+                sb.append(c).append("\r\n");
+            }
+
+            this.writer.print(sb.toString());
+            this.writer.flush();
+
+            ByteBuffer data = readDataBlockingBytes();
+
+            if (this.cache.isCacheable(cacheKey)) {
+                this.cache.set(cacheKey, data);
+            }
+
+            return data;
         }
-
-        this.writer.print(sb.toString());
-        this.writer.flush();
-
-        return readDataBlockingBytes();
     }
 
     /**
@@ -73,7 +114,6 @@ public class CachedSocketConnection {
         try {
             return input.available() > 0;
         } catch (IOException e) {
-            e.printStackTrace();
             return false;
         }
     }
@@ -86,28 +126,8 @@ public class CachedSocketConnection {
      * @throws IOException
      */
     public String readDataBlocking() throws TimeoutException, IOException {
-        long elapsed = 0;
-        int numBytes = 0;
-        StopWatch sw = new StopWatch();
-
-        // The method input.available() returns the number of bytes that can be read without
-        // blocking, whereby input.read() blocks until the socket has data. We could also use
-        // input.read() instead of checking for if a command timeout occurred. Then the socket
-        // timeout would be used.
-        sw.start();
-        while (numBytes == 0 && elapsed < CMD_TIMEOUT) {
-            numBytes = this.input.available();
-            sw.stop();
-            elapsed = sw.getElapsedTime();
-        }
-
-        if (elapsed >= CMD_TIMEOUT) {
-            throw new TimeoutException("Command timed out");
-        } else {
-            CharBuffer buffer = CharBuffer.allocate(numBytes);
-            int consumed = this.reader.read(buffer);
-            return new String(buffer.array(), 0, consumed);
-        }
+        ByteBuffer byteResult = readDataBlockingBytes();
+        return new String(byteResult.array(), Charset.defaultCharset());
     }
 
     /**
@@ -119,7 +139,7 @@ public class CachedSocketConnection {
      */
     public ByteBuffer readDataBlockingBytes() throws IOException {
 
-        this.socket.setSoTimeout((int) CMD_TIMEOUT);
+        this.socket.setSoTimeout((int) cmdTimeout);
 
         BufferedInputStream bis = new BufferedInputStream(input);
         ByteArrayOutputStream baas = new ByteArrayOutputStream();
@@ -138,5 +158,15 @@ public class CachedSocketConnection {
         }
 
         return ByteBuffer.wrap(baas.toByteArray());
+    }
+
+    @Override
+    public Socket getInner() {
+        return this.socket;
+    }
+
+    @Override
+    public ICache getCache() {
+        return this.cache;
     }
 }

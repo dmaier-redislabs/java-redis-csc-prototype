@@ -117,7 +117,7 @@ public class SimpleCache implements ICache {
     @Override
     public List<ICacheKey> deleteByRedisKeyStr(String key) {
 
-        List<ICacheKey> cacheKeys = this.byRedisKeyIdx.get(key);
+        List<ICacheKey> cacheKeys = new ArrayList<>(this.byRedisKeyIdx.get(key));
 
         for (ICacheKey cacheKey : cacheKeys) {
             this.delete(cacheKey);

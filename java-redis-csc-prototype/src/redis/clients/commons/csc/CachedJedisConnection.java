@@ -14,6 +14,8 @@ import java.util.Arrays;
 
 /**
  * Experimental wrapper class
+ *
+ * //TODO: The Jedis connection doesn't expose a method to consume the invalidation notifications.
  */
 public class CachedJedisConnection implements ICachedConnection<UnifiedJedis> {
 
