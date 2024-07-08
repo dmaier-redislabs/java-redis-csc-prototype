@@ -28,15 +28,60 @@ public class CachedSocketConnection implements ICachedConnection<Socket> {
      * @param cache
      * @throws IOException
      */
-    public CachedSocketConnection(String host, int port, long cmdTimeout, ICache cache) throws IOException {
+    public CachedSocketConnection(String host, int port, long cmdTimeout, ICache cache) throws IOException, TimeoutException {
         this.socket = new Socket(host, port);
         OutputStream output = socket.getOutputStream();
         this.input = socket.getInputStream();
         this.writer = new PrintWriter(output, true);
         this.cmdTimeout = cmdTimeout;
         this.cache = cache;
-
+        this.enableTracking();
     }
+
+    /**
+     * The constructor that takes an already created socket
+     *
+     * @param socket
+     * @param cmdTimeout
+     * @param cache
+     * @throws IOException
+     */
+    public CachedSocketConnection(Socket socket, long cmdTimeout, ICache cache, boolean trackingEnabled) throws IOException, TimeoutException {
+        this.socket = socket;
+        OutputStream output = this.socket.getOutputStream();
+        this.input = socket.getInputStream();
+        this.writer = new PrintWriter(output, true);
+        this.cmdTimeout = cmdTimeout;
+        this.cache = cache;
+        if (trackingEnabled)
+            this.enableTracking();
+    }
+
+
+
+    /**
+     * Enable tracking on the Redis server
+     *
+     * @throws IOException
+     * @throws TimeoutException
+     */
+    public boolean enableTracking() {
+        try {
+
+            String helloResult = this.execRawCmdStr(new String[]{"HELLO", "3"});
+            String trackingResult = this.execRawCmdStr(new String[]{"CLIENT", "TRACKING", "ON"});
+
+            if (helloResult.contains("redis") && trackingResult.contains("OK")) {
+                return true;
+            }
+
+        } catch (IOException | TimeoutException e) {
+            //Do nothing
+        }
+
+        return false;
+    }
+
 
     /**
      * Execute a command by assuming that the passed data is a String and that the returned data is
@@ -73,7 +118,7 @@ public class CachedSocketConnection implements ICachedConnection<Socket> {
             //Check if there is an invalidation notification
             if (this.hasData()) {
                 try {
-                    InvalidationNotification msg = new InvalidationNotification(readDataBlockingBytes());
+                    InvalidationNotification msg = new InvalidationNotification(readDataBlocking());
                     for (ByteBuffer k : msg.getKeys()) {
                         this.cache.deleteByRedisKey(k);
                     }
@@ -95,7 +140,7 @@ public class CachedSocketConnection implements ICachedConnection<Socket> {
             this.writer.print(sb.toString());
             this.writer.flush();
 
-            ByteBuffer data = readDataBlockingBytes();
+            ByteBuffer data = readDataBlocking();
 
             if (this.cache.isCacheable(cacheKey)) {
                 this.cache.set(cacheKey, data);
@@ -119,29 +164,15 @@ public class CachedSocketConnection implements ICachedConnection<Socket> {
     }
 
     /**
-     * Wait for data and then read it from the socket's input stream
-     *
-     * @return The data as String
-     * @throws TimeoutException
-     * @throws IOException
-     */
-    public String readDataBlocking() throws TimeoutException, IOException {
-        ByteBuffer byteResult = readDataBlockingBytes();
-        return new String(byteResult.array(), Charset.defaultCharset());
-    }
-
-    /**
      * Reads data from the socket's input stream
      *
      * @return The data as ByteBuffer
      * @throws IOException
 
      */
-    public ByteBuffer readDataBlockingBytes() throws IOException {
+    public ByteBuffer readDataBlocking() throws IOException {
 
         this.socket.setSoTimeout((int) cmdTimeout);
-
-        BufferedInputStream bis = new BufferedInputStream(input);
         ByteArrayOutputStream baas = new ByteArrayOutputStream();
 
         //Block until data arrives. If no data arrives, a SocketTimeOutException is raised.
@@ -151,7 +182,7 @@ public class CachedSocketConnection implements ICachedConnection<Socket> {
 
         //Avoid unnecessary read blocking if there isn't any additional data.
         //If there is more data, then write it into the byte array output stream.
-        while (input.available() > 0) {
+        while (this.input.available() > 0) {
             tmpBuffer = new byte[BUFFER_SIZE];
             bytesRead = this.input.read(tmpBuffer);
             baas.write(tmpBuffer, 0, bytesRead);
@@ -159,6 +190,7 @@ public class CachedSocketConnection implements ICachedConnection<Socket> {
 
         return ByteBuffer.wrap(baas.toByteArray());
     }
+
 
     @Override
     public Socket getInner() {

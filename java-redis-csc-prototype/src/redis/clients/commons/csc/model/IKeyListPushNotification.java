@@ -1,9 +1,11 @@
 package redis.clients.commons.csc.model;
 
 import java.nio.ByteBuffer;
-import java.text.ParseException;
 import java.util.List;
 
+/**
+ * A push notification that contains a list of keys that are impacted
+ */
 public interface IKeyListPushNotification {
 
 

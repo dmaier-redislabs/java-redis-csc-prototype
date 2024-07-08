@@ -18,5 +18,8 @@ public interface ICachedConnection<T> {
      */
     ICache getCache();
 
-
+    /**
+     * Enable tracking on the Redis server
+     */
+    boolean enableTracking();
 }
