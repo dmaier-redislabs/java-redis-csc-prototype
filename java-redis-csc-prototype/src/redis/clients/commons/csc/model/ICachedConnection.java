@@ -19,7 +19,15 @@ public interface ICachedConnection<T> {
     ICache getCache();
 
     /**
-     * Enable tracking on the Redis server
+     * @return True if tracking was enabled, false otherwise
      */
     boolean enableTracking();
+
+
+    /**
+     * @return True if the connection has data still to be processed, false otherwise.
+     *
+     * This is espeically needed in the context of push notifications, where we need to know if there are still messages to be processed
+     */
+    boolean hasData();
 }
